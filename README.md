@@ -5,12 +5,22 @@ Traduce un programa en ensamblador RV32I con sintaxis GNU a una imagen hexadecim
 ## Uso
 
 ```sh
-python assembler.py programa.asm programa.hex [programa.data.hex]
+python assembler.py programa.asm programa.hex [programa.data.hex] [--datos] [--listado]
 ```
 
 - `programa.asm`: el fuente, en UTF-8 (se acepta BOM y saltos de línea CRLF).
 - `programa.hex`: la imagen de `.text`, que empieza en `0x00000000`.
 - `programa.data.hex` (opcional): la imagen de `.data`, que empieza en `0x10000000`. Si no se nombra, los datos se ensamblan y se validan, pero no se escriben.
+- `--datos`: equivale a nombrar el tercer argumento, con la ruta derivada del `.hex` quitándole el sufijo `.hex` y agregando `.data.hex` (`programa.hex` da `programa.data.hex`; `out` da `out.data.hex`). No se puede combinar con el tercer argumento.
+- `--listado`: además escribe `programa.md` (la ruta del `.hex` sin el sufijo `.hex`, más `.md`), una tabla Markdown con una fila por instrucción base: línea, dirección, fuente, mnemónico base (`instr`), palabra, formato (`fmt`) y los campos de la palabra (`opcode`, `rd`, `funct3`, `rs1`, `rs2`, `funct7`, `imm`), cada uno en binario y entre paréntesis en hexadecimal. El `imm` es el valor reconstruido de sus bits, sin signo; en `slli`/`srli`/`srai` son 5 bits y se muestra también `funct7`. El `.md` se sobrescribe sin aviso y, si hay errores, se borra como las demás salidas. Los campos se leen de los bits de la palabra emitida, así que el listado coincide con el `.hex`. Una pseudoinstrucción de dos palabras da dos filas.
+
+Los flags pueden ir antes o después de los argumentos. Ejemplo con `python assembler.py suma.asm suma.hex --listado`:
+
+```
+| línea | dirección | fuente | instr | hex | fmt | opcode | rd | funct3 | rs1 | rs2 | funct7 | imm |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 3 | 0x00000000 | `` main:   li   a0, 10        # contador `` | addi | 00a00513 | I | 0010011 (0x13) | 01010 (0xa) | 000 (0x0) | 00000 (0x0) |  |  | 000000001010 (0xa) |
+```
 
 Cada línea de salida es una palabra de 32 bits: 8 dígitos hexadecimales en minúscula, sin prefijo, terminada en `\n`. La línea 1 es la palabra de la dirección base, la línea 2 la siguiente, y así. Los bytes se agrupan de 4 en 4 en little-endian; si al final sobran bytes se rellena con ceros. Si una sección quedó vacía, su archivo se crea con 0 bytes.
 
@@ -20,9 +30,9 @@ Códigos de salida:
 |---|---|
 | 0 | ensamblado sin errores; se escribieron las salidas |
 | 1 | errores de ensamblado |
-| 2 | error de uso o de E/S: número de argumentos incorrecto, entrada ilegible o que no es UTF-8, salida igual a la entrada, salida que no se puede escribir o borrar |
+| 2 | error de uso o de E/S: número de argumentos incorrecto, flag desconocido, `--datos` junto con un tercer argumento, entrada ilegible o que no es UTF-8, salida igual a la entrada, salida que no se puede escribir o borrar |
 
-Con errores de ensamblado se imprimen todos en stderr, ordenados por línea, con el formato `archivo:línea: error: mensaje`, donde `archivo` es la ruta tal como se escribió en la línea de comandos. No se escribe ninguna salida y, si los archivos de salida nombrados ya existían de una ejecución anterior, se borran, para que no quede un `.hex` viejo que parezca el resultado del fuente actual.
+Con errores de ensamblado se imprimen todos en stderr, ordenados por línea, con el formato `archivo:línea: error: mensaje`, donde `archivo` es la ruta tal como se escribió en la línea de comandos. No se escribe ninguna salida y, si los archivos de salida nombrados o derivados (`--datos`, `--listado`) ya existían de una ejecución anterior, se borran, para que no quede un `.hex` viejo que parezca el resultado del fuente actual.
 
 ## Dependencias
 
@@ -41,7 +51,7 @@ docker run --rm -v "$PWD:/w" -w /w --user "$(id -u):$(id -g)" rv32i-gnu sh tests
 python -m unittest discover -s tests -t . -v
 ```
 
-- `tests/test_*.py`: un archivo de pruebas por módulo (`lexer`, `parser`, `semantic`, `codegen`, `isa`, `model`, `cli`), más `test_typing.py`, que revisa la regla de tipado explícito, y `test_golden.py`.
+- `tests/test_*.py`: un archivo de pruebas por módulo (`lexer`, `parser`, `semantic`, `codegen`, `isa`, `model`, `listing`, `cli`), más `test_typing.py`, que revisa la regla de tipado explícito, y `test_golden.py`.
 - `tests/ok/`: programas correctos. Cada `.asm` viene con el `.hex` (y el `.data.hex` si tiene datos) que produce GNU as 2.44 (`riscv64-unknown-elf-as -march=rv32i -mabi=ilp32 -mno-relax` y luego `ld` con `.text` en 0 y `.data` en `0x10000000`). `test_ok` exige que la salida del ensamblador sea idéntica en texto. Los esperados se regeneran con los dos comandos de Docker de la sección anterior (`tests/regen.sh` recorre `tests/ok/*.asm`).
 - `tests/err/`: programas con errores. Cada `.asm` viene con un `.expect` de una línea por error esperado, `N:palabra clave`. `test_err` primero valida el `.expect`: toda línea debe tener la forma `N:palabra clave`, con la palabra empezando por un carácter que no sea espacio. Luego ensambla una copia del `.asm` en un directorio temporal y exige código 1, que el temporal siga conteniendo solo el `.asm` (no se crea ninguna salida), que toda línea no vacía de stderr sea un diagnóstico `archivo:N: error: mensaje`, que cada línea `N` tenga exactamente tantos diagnósticos como entradas suyas en el `.expect`, cada palabra clave contenida en alguno de ellos, y que no haya diagnósticos en otras líneas. Estos esperados se escriben a mano: GNU no sirve de oráculo porque sus mensajes son otros (en inglés y con otro texto), y en algunos casos acepta lo que este ensamblador rechaza a propósito (ver "Decisiones documentadas").
 
@@ -55,7 +65,7 @@ Es un compilador en miniatura de cinco fases y dos pasadas sobre el fuente:
 2. **Sintaxis** (`rvasm/parser.py`, `parse`): produce una `Statement` por línea: etiquetas, mnemónico o directiva y operandos (`Operand` de tipo `reg`, `num`, `sym`, `mem` o `str`). No conoce las firmas de las instrucciones: un identificador es `reg` si está en `REGISTERS` y `sym` si no.
 3. **Semántica, pasada 1** (`rvasm/semantic.py`, `analyze`): comprueba operandos y rangos de las constantes, expande las pseudoinstrucciones a instrucciones base, asigna direcciones, llena la tabla de símbolos y emite los bytes de `.data`.
 4. **Generación, pasada 2** (`rvasm/codegen.py`, `generate`): resuelve las etiquetas, valida las distancias que dependen de ellas y codifica cada instrucción con los codificadores de `rvasm/isa.py`.
-5. **Emisión** (`rvasm/cli.py`, `main`): ordena los diagnósticos, empaqueta los bytes en palabras (`pack_words`) y escribe los archivos solo si no hubo errores.
+5. **Emisión** (`rvasm/cli.py`, `main`): ordena los diagnósticos, empaqueta los bytes en palabras (`pack_words`) y escribe los archivos solo si no hubo errores. El listado Markdown lo arma `rvasm/listing.py` (`listing`, `fields`) a partir de las `Instr` y de los bytes de `.text`, cortando los campos de cada palabra según `SPEC`.
 
 `assembler.py` solo llama a `rvasm.cli.main`. Las tablas de la ISA (`SPEC`, `SIGNATURES`, `PSEUDOS`, `RANGES`, `ENCODERS`, `REGISTERS`) están en `rvasm/isa.py` y los tipos compartidos en `rvasm/model.py`.
 
@@ -124,7 +134,7 @@ Ejemplo con `li a0, 0x12345FFF`:
 - **Cero inicial rechazado.** `010` o `08` dan `inmediato inválido`: en GNU un cero inicial significa octal, y aceptarlo como decimal daría otro valor sin avisar. Se admiten decimal, `0x` y `0b`, con signo opcional.
 - **`.globl` ignorado.** `.globl` y `.global` se aceptan y no hacen nada, porque hay un solo archivo y no se enlaza; se aceptan para que los programas copiados que los traen ensamblen. Cualquier otra directiva fuera de `.text`, `.data`, `.word`, `.half`, `.byte` y `.string` es `directiva desconocida`.
 - **Mayúsculas.** Mnemónicos y directivas no distinguen mayúsculas (`ADDI`, `.TEXT`); registros y etiquetas sí (`A0` no es un registro).
-- **Borrado de salidas viejas.** Con errores de ensamblado se borran los archivos de salida nombrados que ya existían. Si una salida es el mismo archivo que la entrada, se rechaza con código 2 sin tocar nada. Lo mismo si el `.hex` y el `.data.hex` resuelven al mismo archivo: `las salidas 'a' y 'b' son el mismo archivo`, código 2 y ningún archivo tocado. Si falla escribir el `.data.hex`, se borra el `.hex` recién escrito, para no dejar una salida a medias.
+- **Borrado de salidas viejas.** Con errores de ensamblado se borran los archivos de salida nombrados que ya existían. Si una salida es el mismo archivo que la entrada, se rechaza con código 2 sin tocar nada. Lo mismo si el `.hex` y el `.data.hex` resuelven al mismo archivo: `las salidas 'a' y 'b' son el mismo archivo`, código 2 y ningún archivo tocado. Lo mismo vale para las rutas derivadas, que además no pueden coincidir con la entrada ni entre sí. Si falla escribir una salida, se borran las anteriores recién escritas, para no dejar un conjunto a medias.
 - **Entrada no UTF-8.** Un `.asm` que no es UTF-8 válido es un error de E/S (código 2), no de ensamblado.
 - **`li x0` según el enunciado.** `li` ocupa 4 u 8 bytes solo según el valor, también cuando `rd` es `x0`, tal como lo describe el enunciado. Medido: para `li x0, 0x12345000` GNU emite `lui zero` + `addi zero, zero, 0` (8 bytes) y este ensamblador emite solo el `lui` (4 bytes), siguiendo la regla del enunciado. Por eso ese caso no está en `tests/ok`.
 - **Sin alineación en `.data`.** Cada dato va justo después del anterior: un `.word` después de `.string "hi"` queda en una dirección no múltiplo de 4.

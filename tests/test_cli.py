@@ -326,3 +326,148 @@ class MainEndToEndTest(unittest.TestCase):
         self.assertNotIn("Traceback", proc.stderr)
         self.assertIn("assembler.py: error: no se puede escribir 'dibujo.data.hex': ", proc.stderr)
         self.assertFalse((self.dir / "dibujo.hex").exists())
+
+    def test_datos_flag_writes_derived_data_hex(self) -> None:
+        # Arrange
+        (self.dir / "dibujo.asm").write_text(DRAWING, encoding="utf-8")
+
+        # Act
+        proc: subprocess.CompletedProcess[str] = run_cli(self.dir, ["dibujo.asm", "dibujo.hex", "--datos"])
+
+        # Assert
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout, "")
+        self.assertEqual((self.dir / "dibujo.data.hex").read_text(encoding="utf-8"), "00000005\n00006968\n")
+
+    def test_datos_flag_derives_name_from_output_without_hex_suffix(self) -> None:
+        # Arrange
+        (self.dir / "dibujo.asm").write_text(DRAWING, encoding="utf-8")
+
+        # Act
+        proc: subprocess.CompletedProcess[str] = run_cli(self.dir, ["dibujo.asm", "out", "--datos"])
+
+        # Assert
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue((self.dir / "out.data.hex").exists())
+
+    def test_datos_flag_removes_stale_data_hex_on_errors(self) -> None:
+        # Arrange
+        (self.dir / "x.asm").write_text(ERRORES, encoding="utf-8")
+        (self.dir / "x.data.hex").write_text("basura\n", encoding="utf-8")
+
+        # Act
+        proc: subprocess.CompletedProcess[str] = run_cli(self.dir, ["x.asm", "x.hex", "--datos"])
+
+        # Assert
+        self.assertEqual(proc.returncode, 1)
+        self.assertFalse((self.dir / "x.data.hex").exists())
+
+    def test_datos_flag_with_third_positional_exits_2_and_writes_nothing(self) -> None:
+        # Arrange
+        (self.dir / "suma.asm").write_text(SUMA, encoding="utf-8")
+
+        # Act
+        proc: subprocess.CompletedProcess[str] = run_cli(self.dir, ["suma.asm", "x.hex", "x.data.hex", "--datos"])
+
+        # Assert
+        self.assertEqual(proc.returncode, 2)
+        self.assertEqual(proc.stdout, "")
+        self.assertEqual(proc.stderr, "assembler.py: error: --datos y un tercer argumento no van juntos\n")
+        self.assertEqual(sorted(p.name for p in self.dir.iterdir()), ["suma.asm"])
+
+    def test_unknown_flag_exits_2_with_usage(self) -> None:
+        # Arrange
+        (self.dir / "suma.asm").write_text(SUMA, encoding="utf-8")
+
+        # Act
+        proc: subprocess.CompletedProcess[str] = run_cli(self.dir, ["suma.asm", "x.hex", "--otro"])
+
+        # Assert
+        self.assertEqual(proc.returncode, 2)
+        self.assertEqual(proc.stdout, "")
+        self.assertTrue(proc.stderr.startswith("uso: python assembler.py programa.asm programa.hex"))
+        self.assertEqual(sorted(p.name for p in self.dir.iterdir()), ["suma.asm"])
+
+    def test_failed_derived_data_write_removes_fresh_hex(self) -> None:
+        # Arrange
+        (self.dir / "dibujo.asm").write_text(DRAWING, encoding="utf-8")
+        (self.dir / "dibujo.data.hex").mkdir()
+
+        # Act
+        proc: subprocess.CompletedProcess[str] = run_cli(self.dir, ["dibujo.asm", "dibujo.hex", "--datos"])
+
+        # Assert
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("assembler.py: error: no se puede escribir 'dibujo.data.hex': ", proc.stderr)
+        self.assertFalse((self.dir / "dibujo.hex").exists())
+
+    def test_listado_flag_writes_markdown_table(self) -> None:
+        # Arrange
+        (self.dir / "suma.asm").write_text(SUMA, encoding="utf-8")
+
+        # Act
+        proc: subprocess.CompletedProcess[str] = run_cli(self.dir, ["suma.asm", "suma.hex", "--listado"])
+
+        # Assert
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout, "")
+        table: str = (self.dir / "suma.md").read_text(encoding="utf-8")
+        self.assertIn("| línea | dirección | fuente | instr | hex | fmt |", table)
+        self.assertIn("| 5 | 0x00000008 | `` loop:   beqz a0, end `` | beq | 00050863 | B |", table)
+        self.assertEqual(table.count("\n"), 2 + len(SUMA_WORDS))
+
+    def test_listado_flag_with_errors_exits_1_and_removes_stale_md(self) -> None:
+        # Arrange
+        (self.dir / "x.asm").write_text(ERRORES, encoding="utf-8")
+        (self.dir / "x.md").write_text("viejo\n", encoding="utf-8")
+
+        # Act
+        proc: subprocess.CompletedProcess[str] = run_cli(self.dir, ["x.asm", "x.hex", "--listado"])
+
+        # Assert
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(sorted(p.name for p in self.dir.iterdir()), ["x.asm"])
+
+    def test_unwritable_md_exits_2_and_removes_other_outputs(self) -> None:
+        # Arrange
+        (self.dir / "dibujo.asm").write_text(DRAWING, encoding="utf-8")
+        (self.dir / "dibujo.md").mkdir()
+
+        # Act
+        proc: subprocess.CompletedProcess[str] = run_cli(
+            self.dir, ["dibujo.asm", "dibujo.hex", "--datos", "--listado"]
+        )
+
+        # Assert
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("assembler.py: error: no se puede escribir 'dibujo.md': ", proc.stderr)
+        self.assertFalse((self.dir / "dibujo.hex").exists())
+        self.assertFalse((self.dir / "dibujo.data.hex").exists())
+
+    def test_flags_work_before_positionals(self) -> None:
+        # Arrange
+        (self.dir / "dibujo.asm").write_text(DRAWING, encoding="utf-8")
+
+        # Act
+        proc: subprocess.CompletedProcess[str] = run_cli(
+            self.dir, ["--listado", "--datos", "dibujo.asm", "dibujo.hex"]
+        )
+
+        # Assert
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            sorted(p.name for p in self.dir.iterdir()),
+            ["dibujo.asm", "dibujo.data.hex", "dibujo.hex", "dibujo.md"],
+        )
+
+    def test_md_colliding_with_input_exits_2(self) -> None:
+        # Arrange
+        (self.dir / "x.md").write_text(SUMA, encoding="utf-8")
+
+        # Act
+        proc: subprocess.CompletedProcess[str] = run_cli(self.dir, ["x.md", "x.hex", "--listado"])
+
+        # Assert
+        self.assertEqual(proc.returncode, 2)
+        self.assertEqual(proc.stderr, "assembler.py: error: la salida 'x.md' es el mismo archivo que la entrada\n")
+        self.assertEqual((self.dir / "x.md").read_text(encoding="utf-8"), SUMA)

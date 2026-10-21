@@ -35,7 +35,7 @@ class GoldenTest(unittest.TestCase):
 
                     # Act
                     proc: subprocess.CompletedProcess[str] = subprocess.run(
-                        [sys.executable, ASSEMBLER, str(source), str(out_hex), str(out_data)],
+                        [sys.executable, ASSEMBLER, str(source), str(out_hex), str(out_data), "--listado"],
                         capture_output=True,
                         text=True,
                     )
@@ -44,6 +44,8 @@ class GoldenTest(unittest.TestCase):
                     self.assertEqual(proc.returncode, 0, proc.stderr)
                     self.assertEqual(out_hex.read_text(encoding="utf-8"), expected_text)
                     self.assertEqual(out_data.read_text(encoding="utf-8"), expected_data)
+                    rows: int = len((Path(tmp) / "out.md").read_text(encoding="utf-8").splitlines()) - 2
+                    self.assertEqual(rows, len(expected_text.splitlines()))
 
     def test_err(self) -> None:
         # Arrange
