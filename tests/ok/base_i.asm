@@ -1,0 +1,23 @@
+# Tipo I aritméticas con inmediatos límite y en hex/binario, y desplazamientos 0, 1, 31
+        addi  a0, a1, 0
+        addi  a0, a1, 2047
+        addi  a0, a1, -2048
+        slti  t0, t1, -1
+        slti  t0, t1, 0x7FF
+        sltiu t2, s0, 0b101
+        sltiu t2, s0, -0x10
+        xori  s1, a2, -1
+        xori  s1, a2, 2047
+        ori   x31, x0, -2048
+        ori   a3, a4, 0b101
+        andi  a5, a6, 0x7FF
+        andi  a5, a6, -0x10
+        slli  a7, s2, 0
+        slli  a7, s2, 1
+        slli  a7, s2, 31
+        srli  s3, s4, 0
+        srli  s3, s4, 1
+        srli  s3, s4, 31
+        srai  s5, s6, 0
+        srai  s5, s6, 1
+        srai  s5, s6, 31

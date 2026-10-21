@@ -1,0 +1,13 @@
+# Cargas y almacenamientos con desplazamiento 0, 2047, -2048, sin desplazamiento y con espacios
+        lb   a0, 0(a1)
+        lh   a2, 2047(a3)
+        lw   a4, -2048(a5)
+        lbu  t0, (sp)
+        lhu  t1, 0 ( a1 )
+        lw   x31, 4(x0)
+        sb   a0, 0(a1)
+        sh   a2, 2047(a3)
+        sw   a4, -2048(a5)
+        sw   t0, (sp)
+        sb   t1, 0 ( a1 )
+        sh   x0, -1(x31)

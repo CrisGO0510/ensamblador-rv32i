@@ -1,0 +1,6 @@
+1:espera 3 operandos
+2:debe ser un inmediato
+3:registro inexistente 'x32'
+4:registro inexistente 't7'
+5:desplazamiento(registro)
+6:debe ser una etiqueta
