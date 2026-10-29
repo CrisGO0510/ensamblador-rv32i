@@ -24,10 +24,20 @@ def unannotated_args(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
 
 def violations(source: str, name: str) -> list[str]:
     found: list[tuple[int, str]] = []
+    tree: ast.Module = ast.parse(source, filename=name)
+    enum_members: set[int] = {
+        id(stmt)
+        for cls in ast.walk(tree)
+        if isinstance(cls, ast.ClassDef)
+        and any(isinstance(b, ast.Name) and b.id.endswith("Enum") for b in cls.bases)
+        for stmt in cls.body
+        if isinstance(stmt, ast.Assign)
+    }
     node: ast.AST
-    for node in ast.walk(ast.parse(source, filename=name)):
+    for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
-            found.append((node.lineno, "asignación sin anotación"))
+            if id(node) not in enum_members:
+                found.append((node.lineno, "asignación sin anotación"))
         elif isinstance(node, ast.Lambda):
             found.append((node.lineno, "lambda"))
         elif isinstance(node, ast.NamedExpr):
@@ -69,7 +79,9 @@ class TypingGateTest(unittest.TestCase):
             ("from typing import Any\n", 1),
             ("if (n := 1):\n    pass\n", 1),
             ("with open('f') as (a, b):\n    pass\n", 1),
+            ("class C:\n    A = 1\n", 1),
             ("x: int\n", 0),
+            ("class K(StrEnum):\n    A = 'A'\n", 0),
             ("x: int = 0\nx += 1\n", 0),
             ("with open('f') as f:\n    pass\n", 0),
             ("try:\n    pass\nexcept ValueError as e:\n    pass\n", 0),

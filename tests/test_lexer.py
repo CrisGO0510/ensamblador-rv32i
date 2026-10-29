@@ -63,6 +63,7 @@ class ParseNumTest(unittest.TestCase):
         cases: list[tuple[str, int]] = [
             ("42", 42), ("-12", -12), ("+5", 5), ("0xFF", 255), ("0XfF", 255),
             ("-0x10", -16), ("0b1010", 10), ("0B101", 5), ("0", 0), ("-0", 0),
+            ("00", 0), ("010", 10), ("08", 8), ("-08", -8),
         ]
         case: tuple[str, int]
         for case in cases:
@@ -75,7 +76,7 @@ class ParseNumTest(unittest.TestCase):
 
     def test_invalid_numbers(self) -> None:
         # Arrange
-        texts: list[str] = ["00", "010", "08", "-08", "1_000", "0x", "1.5", "٣", " 5", "0x_1"]
+        texts: list[str] = ["1_000", "0x", "1.5", "٣", " 5", "0x_1"]
         text: str
         for text in texts:
             with self.subTest(text=text):
@@ -86,9 +87,9 @@ class ParseNumTest(unittest.TestCase):
 
     def test_invalid_message_quotes_the_text(self) -> None:
         # Arrange
-        text: str = "010"
+        text: str = "1.5"
 
         # Act
         # Assert
-        with self.assertRaisesRegex(AsmError, "^inmediato inválido '010'$"):
+        with self.assertRaisesRegex(AsmError, "^inmediato inválido '1\\.5'$"):
             parse_num(text)

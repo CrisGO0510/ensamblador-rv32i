@@ -41,9 +41,9 @@ class ParseStatementTest(unittest.TestCase):
             ('.string "a", "b"', (Operand("str", b"a"), Operand("str", b"b"))),
             ('.string "a#b"  # c', (Operand("str", b"a#b"),)),
             ('.string "a, b"', (Operand("str", b"a, b"),)),
-            (r'.string "a\tb\n\"q\"\\ \0 \101\x41"', (Operand("str", b'a\tb\n"q"\\ \x00 AA'),)),
+            (r'.string "a\tb\n\"q\"\\ AA"', (Operand("str", b'a\tb\n"q"\\ AA'),)),
             ('.string "ñ"', (Operand("str", b"\xc3\xb1"),)),
-            (r'.string "\r\7\x7f"', (Operand("str", b"\r\x07\x7f"),)),
+            (r'.string "\r"', (Operand("str", b"\r"),)),
         ]
         case: tuple[str, tuple[Operand, ...]]
         for case in cases:
@@ -64,8 +64,9 @@ class ParseStatementTest(unittest.TestCase):
             ("addi a0, a0, 1,", "línea mal formada cerca de ','"),
             ("addi ,a0", "línea mal formada cerca de ','"),
             (r'.string "a\qb"', r"secuencia de escape desconocida '\q'"),
-            (r'.string "\x4g"', r"secuencia de escape desconocida '\x'"),
+            (r'.string "\x41"', r"secuencia de escape desconocida '\x'"),
             (r'.string "\8"', r"secuencia de escape desconocida '\8'"),
+            (r'.string "\0"', r"secuencia de escape desconocida '\0'"),
         ]
         case: tuple[str, str]
         for case in cases:

@@ -23,7 +23,7 @@ from rvasm.model import (
 class ModelTest(unittest.TestCase):
     def test_named_tuples_have_the_planned_fields(self) -> None:
         # Arrange
-        token: Token = Token("IDENT", "addi", 2)
+        token: Token = Token(TokenKind.IDENT, "addi")
         operand: Operand = Operand("mem", 8, base=2)
         reloc: Reloc = Reloc("pcrel", "loop", 0x10)
         fixup: Fixup = Fixup(3, 4, "msg")
@@ -39,7 +39,7 @@ class ModelTest(unittest.TestCase):
 
         # Assert
         self.assertEqual(fields, [
-            ("kind", "text", "col"),
+            ("kind", "text"),
             ("kind", "value", "base"),
             ("kind", "symbol", "anchor"),
             ("line", "offset", "symbol"),
@@ -49,25 +49,11 @@ class ModelTest(unittest.TestCase):
         ])
 
     def test_kind_literals_list_every_value(self) -> None:
-        # Arrange
-        kinds: list[object] = [TokenKind, OperandKind, RelocKind]
-
         # Act
-        counts: list[int] = [len(get_args(k)) for k in kinds]
+        counts: list[int] = [len(TokenKind), len(get_args(OperandKind)), len(get_args(RelocKind))]
 
         # Assert
         self.assertEqual(counts, [7, 5, 3])
-
-    def test_instr_defaults_to_four_bytes(self) -> None:
-        # Arrange
-        instr: Instr = Instr(line=1, mnem="add")
-
-        # Act
-        size: int = instr.size
-
-        # Assert
-        self.assertEqual(size, 4)
-        self.assertIsNone(instr.reloc)
 
     def test_unit_starts_with_layout_ok(self) -> None:
         # Arrange

@@ -3,7 +3,7 @@
 w:      .word 1, 2147483647, -1, 0xFFFFFFFF
 h:      .half 1, -1, 0xFFFF, 0x1234
 b:      .byte 1, 2, 3, -1, 0xFF
-s:      .string "a#b,c\n\t\"q\"\\ \101\x41"
+s:      .string "a#b,c\n\t\"q\"\\ AA"
 p:      .word w, s, main
         .text
 main:   la   a0, w

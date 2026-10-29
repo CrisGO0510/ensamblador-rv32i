@@ -113,7 +113,7 @@ class EncoderTest(unittest.TestCase):
             (Instr(1, "jal", rd=0, imm=-12), 0xFF5FF06F),
             (Instr(1, "sw", rs2=10, rs1=2, imm=-4), 0xFEA12E23),
             (Instr(1, "sub", rd=10, rs1=11, rs2=12), 0x40C58533),
-            (Instr(1, "ecall", imm=FIXED_IMM["ecall"]), 0x00000073),
+            (Instr(1, "ecall"), 0x00000073),
             (Instr(1, "ebreak", imm=FIXED_IMM["ebreak"]), 0x00100073),
             (Instr(1, "beq", rs1=1, rs2=2, imm=2048), 0x002080E3),
             (Instr(1, "beq", rs1=1, rs2=2, imm=-4096), 0x80208063),

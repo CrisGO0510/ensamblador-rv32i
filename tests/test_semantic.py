@@ -1,6 +1,7 @@
 import unittest
 from typing import Final, TypeAlias
 
+from rvasm.cli import AsmResult, assemble_lines
 from rvasm.lexer import tokenize
 from rvasm.model import AsmError, Diagnostic, Fixup, Instr, Reloc, Statement, Unit
 from rvasm.parser import parse
@@ -437,6 +438,8 @@ class ReservationTest(unittest.TestCase):
             ("li a0, 0x100000000\nfin: nop", 4, False),
             ("li a0, foo\nfin: nop", 4, False),
             ("mul a0,a0,a0\nfin: nop", 0, False),
+            (".data\naddi x1, x2, 4096\n.text\nfin: nop", 0, True),
+            (".data\nmul a0,a0,a0\n.text\nfin: nop", 0, True),
         ]
         case: tuple[str, int, bool]
         for case in cases:
@@ -448,6 +451,17 @@ class ReservationTest(unittest.TestCase):
                 self.assertEqual(unit.symtab["fin"], case[1])
                 self.assertIs(unit.layout_ok, case[2])
                 self.assertEqual(len(unit.errors), 1)
+
+    def test_failed_instruction_in_data_does_not_advance_text(self) -> None:
+        # Arrange
+        lines: list[str] = ["beq a0,a1,L"] + ["nop"] * 1022 + [".data", "addi a0,a0,1", ".text", "L: nop"]
+
+        # Act
+        result: AsmResult = assemble_lines(lines)
+
+        # Assert
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("'addi' solo es válido en .text", result.errors[0].msg)
 
     def test_unparsed_line_breaks_layout(self) -> None:
         # Arrange

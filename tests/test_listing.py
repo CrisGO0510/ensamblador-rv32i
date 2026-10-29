@@ -149,6 +149,17 @@ class ListingTest(unittest.TestCase):
         self.assertIn("`` nop # a\\|b ``", table)
         self.assertNotIn("\r", table)
 
+    def test_backtick_run_widens_code_span_delimiter(self) -> None:
+        # Arrange
+        lines: list[str] = ["addi x1,x0,1 # a``b"]
+        result: AsmResult = assemble_lines(lines)
+
+        # Act
+        table: str = listing(lines, result.instrs, result.image.text)
+
+        # Assert
+        self.assertIn("``` addi x1,x0,1 # a``b ```", table)
+
     def test_empty_text_has_only_header(self) -> None:
         # Arrange / Act
         table: str = listing([], [], b"")
