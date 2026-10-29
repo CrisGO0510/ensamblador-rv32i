@@ -143,28 +143,24 @@ def far_form(mnem: str, args: tuple[Operand, ...]) -> bool:
     return mnem in SPEC and SPEC[mnem].shape in ("rm", "sm") and len(args) >= 2 and args[1].kind == "sym"
 
 
-def expand(stmt: Statement, mnem: str, anchor: int) -> list[Instr]:
-    line: int = stmt.line
-    shape: str = SPEC[mnem].shape if mnem in SPEC else "pseudo"
-    if shape == "sm" and len(stmt.args) == 2 and far_form(mnem, stmt.args):
-        names: str = ", ".join(field[1] for field in SIGNATURES["sm"][1])
-        raise AsmError(f"'{mnem}' con símbolo espera 3 operandos ({names}), se dieron 2")
-    alternatives: tuple[Signature, ...] = SIGNATURES[shape] if mnem in SPEC else (PSEUDOS[mnem].signature,)
-    bound: Bound = bind(mnem, match(mnem, alternatives, stmt.args), stmt.args)
+def expand_real(line: int, mnem: str, shape: str, is_far: bool, bound: Bound, anchor: int) -> list[Instr]:
+    ints: dict[str, int] = bound.ints
+    if is_far and shape == "rm":
+        return far(line, mnem, bound.symbol, anchor, ints["rd"], ints["rd"], 0)
+    if is_far:
+        return far(line, mnem, bound.symbol, anchor, ints["rt"], 0, ints["rs2"])
+    pcrel: Reloc | None = Reloc("pcrel", bound.symbol, anchor) if bound.symbol else None
+    return [
+        Instr(
+            line, mnem, rd=ints.get("rd", 1 if shape in ("rj", "jalr") else 0), rs1=ints.get("rs1", 0),
+            rs2=ints.get("rs2", 0), imm=ints.get("imm", FIXED_IMM.get(mnem, 0)), reloc=pcrel,
+        )
+    ]
+
+
+def expand_pseudo(line: int, mnem: str, bound: Bound, anchor: int) -> list[Instr]:
     ints: dict[str, int] = bound.ints
     symbol: str = bound.symbol
-    pcrel: Reloc | None = Reloc("pcrel", symbol, anchor) if symbol else None
-    if far_form(mnem, stmt.args) and shape == "rm":
-        return far(line, mnem, symbol, anchor, ints["rd"], ints["rd"], 0)
-    if far_form(mnem, stmt.args):
-        return far(line, mnem, symbol, anchor, ints["rt"], 0, ints["rs2"])
-    if mnem in SPEC:
-        return [
-            Instr(
-                line, mnem, rd=ints.get("rd", 1 if shape in ("rj", "jalr") else 0), rs1=ints.get("rs1", 0),
-                rs2=ints.get("rs2", 0), imm=ints.get("imm", FIXED_IMM.get(mnem, 0)), reloc=pcrel,
-            )
-        ]
     if mnem == "li":
         return expand_li(line, ints["rd"], ints["imm"])
     if mnem == "la":
@@ -173,9 +169,23 @@ def expand(stmt: Statement, mnem: str, anchor: int) -> list[Instr]:
         return far(line, "jalr", symbol, anchor, 1, 1, 0)
     if mnem == "tail":
         return far(line, "jalr", symbol, anchor, 6, 0, 0)
+    pcrel: Reloc | None = Reloc("pcrel", symbol, anchor) if symbol else None
     template: tuple[str, str, str, str, int] = TEMPLATES[mnem]
     fields: list[int] = [ints[name] if name in ints else REGISTERS[name] for name in template[1:4]]
     return [Instr(line, template[0], rd=fields[0], rs1=fields[1], rs2=fields[2], imm=template[4], reloc=pcrel)]
+
+
+def expand(stmt: Statement, mnem: str, anchor: int) -> list[Instr]:
+    shape: str = SPEC[mnem].shape if mnem in SPEC else "pseudo"
+    is_far: bool = far_form(mnem, stmt.args)
+    if shape == "sm" and len(stmt.args) == 2 and is_far:
+        names: str = ", ".join(field[1] for field in SIGNATURES["sm"][1])
+        raise AsmError(f"'{mnem}' con símbolo espera 3 operandos ({names}), se dieron 2")
+    alternatives: tuple[Signature, ...] = SIGNATURES[shape] if mnem in SPEC else (PSEUDOS[mnem].signature,)
+    bound: Bound = bind(mnem, match(mnem, alternatives, stmt.args), stmt.args)
+    if mnem in SPEC:
+        return expand_real(stmt.line, mnem, shape, is_far, bound, anchor)
+    return expand_pseudo(stmt.line, mnem, bound, anchor)
 
 
 def reserved_size(stmt: Statement, mnem: str) -> int | None:
@@ -200,9 +210,10 @@ def instruction(stmt: Statement, mnem: str, section: str, pc: dict[str, int], un
             raise AsmError(f"'{mnem}' solo es válido en .text")
         instrs: list[Instr] = expand(stmt, mnem, pc[".text"])
     except AsmError:
-        size: int | None = reserved_size(stmt, mnem)
-        unit.layout_ok &= size is not None
-        pc[".text"] += 4 if size is None and mnem == "li" else size or 0
+        if section == ".text":
+            size: int | None = reserved_size(stmt, mnem)
+            unit.layout_ok &= size is not None
+            pc[".text"] += 4 if size is None and mnem == "li" else size or 0
         raise
     ins: Instr
     for ins in instrs:
