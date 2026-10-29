@@ -65,7 +65,7 @@ Es un compilador en miniatura de cinco fases y dos pasadas sobre el fuente:
 2. **Sintaxis** (`rvasm/parser.py`, `parse`): produce una `Statement` por línea: etiquetas, mnemónico o directiva y operandos (`Operand` de tipo `reg`, `num`, `sym`, `mem` o `str`). No conoce las firmas de las instrucciones: un identificador es `reg` si está en `REGISTERS` y `sym` si no.
 3. **Semántica, pasada 1** (`rvasm/semantic.py`, `analyze`): comprueba operandos y rangos de las constantes, expande las pseudoinstrucciones a instrucciones base, asigna direcciones, llena la tabla de símbolos y emite los bytes de `.data`.
 4. **Generación, pasada 2** (`rvasm/codegen.py`, `generate`): resuelve las etiquetas, valida las distancias que dependen de ellas y codifica cada instrucción con los codificadores de `rvasm/isa.py`.
-5. **Emisión** (`rvasm/cli.py`, `main`): ordena los diagnósticos, empaqueta los bytes en palabras (`pack_words`) y escribe los archivos solo si no hubo errores. El listado Markdown lo arma `rvasm/listing.py` (`listing`, `fields`) a partir de las `Instr` y de los bytes de `.text`, cortando los campos de cada palabra según `SPEC`.
+5. **Emisión** (`rvasm/cli.py`, `assemble_file`): valida los argumentos y las rutas, ordena los diagnósticos (`assemble_lines`), empaqueta los bytes en palabras (`pack_words`) y escribe los archivos solo si no hubo errores. El listado Markdown lo arma `rvasm/listing.py` (`listing`, `fields`) a partir de las `Instr` y de los bytes de `.text`, cortando los campos de cada palabra según `SPEC`.
 
 `assembler.py` solo llama a `rvasm.cli.main`. Las tablas de la ISA (`SPEC`, `SIGNATURES`, `PSEUDOS`, `RANGES`, `ENCODERS`, `REGISTERS`) están en `rvasm/isa.py` y los tipos compartidos en `rvasm/model.py`.
 
@@ -92,11 +92,11 @@ Una pseudoinstrucción se convierte en la pasada 1 en una o dos `Instr`; la pasa
 1. **No se detiene en el primer error.** Cada línea se procesa aunque las anteriores hayan fallado, y se informan todos los errores, ordenados por línea.
 2. **Un error por paso y por línea.** En cada línea primero se registran las etiquetas y luego se procesa la instrucción o directiva; en cada paso gana el primer error. Una etiqueta duplicada no impide registrar las demás de la línea.
 3. **La pasada 1 valida lo constante; la pasada 2, lo que depende de etiquetas.** Rangos de inmediatos, registros, número y tipo de operandos se revisan en la semántica, salvo el registro base de un acceso a memoria (`0(x40)`), que lo rechaza ya el parser; etiquetas no definidas y distancias de ramas y saltos, en la generación.
-4. **Las direcciones de `.text` se conservan aunque haya errores.** Si una instrucción falla pero su tamaño se conoce, el contador de `.text` avanza igual. Si no se conoce (línea que no parseó, mnemónico inexistente o `li` con inmediato inválido), `Unit.layout_ok` pasa a `False` y la pasada 2 deja de informar errores de rango, que serían falsos; las etiquetas no definidas se informan siempre. En `.data` no hay reserva: una directiva de datos con error no avanza el contador de `.data` desde el valor erróneo en adelante (los valores anteriores de la misma línea sí cuentan).
+4. **Las direcciones de `.text` se conservan aunque haya errores.** Si una instrucción de `.text` falla pero su tamaño se conoce, el contador de `.text` avanza igual; una instrucción escrita en `.data` no reserva nada ni toca `layout_ok`. Si no se conoce (línea que no parseó, mnemónico inexistente o `li` con inmediato inválido), `Unit.layout_ok` pasa a `False` y la pasada 2 deja de informar errores de rango, que serían falsos; las etiquetas no definidas se informan siempre. En `.data` no hay reserva: una directiva de datos con error no avanza el contador de `.data` desde el valor erróneo en adelante (los valores anteriores de la misma línea sí cuentan).
 
 ### Tipado explícito
 
-Todo el código, pruebas incluidas, está anotado: cada parámetro y retorno, cada asignación (`pc: int = 0`), las variables de `for` y `with` declaradas en la línea anterior, constantes con `Final` y alias con `TypeAlias`. Están prohibidos la asignación sin anotación, el desempaquetado (`a, b = f()`, `for k, v in ...`), las lambdas, el operador walrus y `Any`.
+Todo el código, pruebas incluidas, está anotado: cada parámetro y retorno, cada asignación (`pc: int = 0`), las variables de `for` y `with` declaradas en la línea anterior, constantes con `Final` y alias con `TypeAlias`. Están prohibidos la asignación sin anotación (salvo los miembros de un enum, que mypy no deja anotar), el desempaquetado (`a, b = f()`, `for k, v in ...`), las lambdas, el operador walrus y `Any`.
 
 Se verifica de dos formas, y ambas deben pasar:
 
@@ -131,7 +131,7 @@ Ejemplo con `li a0, 0x12345FFF`:
 
 ## Decisiones documentadas
 
-- **Cero inicial rechazado.** `010` o `08` dan `inmediato inválido`: en GNU un cero inicial significa octal, y aceptarlo como decimal daría otro valor sin avisar. Se admiten decimal, `0x` y `0b`, con signo opcional.
+- **Cero inicial rechazado.** `010` o `08` dan `inmediato inválido`: en GNU un cero inicial significa octal, y aceptarlo como decimal daría otro valor sin avisar. Se admiten decimal, `0x` y `0b`, con signo opcional. En `.string` solo hay los escapes `\n` `\t` `\r` `\"` `\\`; los numéricos de GNU (`\0`, `\101`, `\x41`) dan `secuencia de escape desconocida`. Un byte arbitrario se escribe con `.byte`.
 - **`.globl` ignorado.** `.globl` y `.global` se aceptan y no hacen nada, porque hay un solo archivo y no se enlaza; se aceptan para que los programas copiados que los traen ensamblen. Cualquier otra directiva fuera de `.text`, `.data`, `.word`, `.half`, `.byte` y `.string` es `directiva desconocida`.
 - **Mayúsculas.** Mnemónicos y directivas no distinguen mayúsculas (`ADDI`, `.TEXT`); registros y etiquetas sí (`A0` no es un registro).
 - **Borrado de salidas viejas.** Con errores de ensamblado se borran los archivos de salida nombrados que ya existían. Si una salida es el mismo archivo que la entrada, se rechaza con código 2 sin tocar nada. Lo mismo si el `.hex` y el `.data.hex` resuelven al mismo archivo: `las salidas 'a' y 'b' son el mismo archivo`, código 2 y ningún archivo tocado. Lo mismo vale para las rutas derivadas, que además no pueden coincidir con la entrada ni entre sí. Si falla escribir una salida, se borran las anteriores recién escritas, para no dejar un conjunto a medias.
