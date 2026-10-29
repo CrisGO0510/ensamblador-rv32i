@@ -5,7 +5,7 @@ from rvasm.isa import REGISTERS
 from rvasm.lexer import parse_num
 from rvasm.model import AsmError, Operand, Statement, Token, TokenKind
 
-ESCAPE_RE: Final[re.Pattern[str]] = re.compile(r'\\(?:([ntr"\\])|([0-7]{1,3})|x([0-9a-fA-F]{2})|.)|[^\\]+')
+ESCAPE_RE: Final[re.Pattern[str]] = re.compile(r'\\(?:(?P<simple>[ntr"\\])|(?P<unknown>.))|(?P<text>[^\\]+)')
 SIMPLE_ESCAPES: Final[dict[str, int]] = {"n": 10, "t": 9, "r": 13, '"': 34, "\\": 92}
 
 
@@ -13,20 +13,13 @@ def decode_string(literal: str) -> bytes:
     out: bytearray = bytearray()
     mo: re.Match[str]
     for mo in ESCAPE_RE.finditer(literal[1:-1]):
-        piece: str = mo.group()
-        simple: str | None = mo.group(1)
-        octal: str | None = mo.group(2)
-        hexa: str | None = mo.group(3)
-        if simple is not None:
-            out.append(SIMPLE_ESCAPES[simple])
-        elif octal is not None and int(octal, 8) <= 0xFF:
-            out.append(int(octal, 8))
-        elif hexa is not None:
-            out.append(int(hexa, 16))
-        elif piece[0] == "\\":
-            raise AsmError(f"secuencia de escape desconocida '{piece}'")
-        else:
-            out += piece.encode("utf-8")
+        match mo.lastgroup:
+            case "simple":
+                out.append(SIMPLE_ESCAPES[mo["simple"]])
+            case "text":
+                out += mo["text"].encode("utf-8")
+            case _:
+                raise AsmError(f"secuencia de escape desconocida '{mo.group()}'")
     return bytes(out)
 
 
@@ -56,18 +49,7 @@ def parse_group(group: list[Token]) -> Operand:
     return Operand("sym", token.text)
 
 
-def parse(line_no: int, tokens: list[Token]) -> Statement:
-    labels: list[str] = []
-    pos: int = 0
-    while pos + 1 < len(tokens) and tokens[pos].kind == "IDENT" and tokens[pos + 1].kind == "COLON":
-        labels.append(tokens[pos].text)
-        pos += 2
-    if pos == len(tokens):
-        return Statement(line_no, tuple(labels), None, ())
-    if tokens[pos].kind != "IDENT":
-        raise malformed(tokens[pos])
-    mnem: str = tokens[pos].text.lower()
-    rest: list[Token] = tokens[pos + 1 :]
+def split_operands(rest: list[Token]) -> list[Operand]:
     args: list[Operand] = []
     group: list[Token] = []
     token: Token
@@ -83,4 +65,19 @@ def parse(line_no: int, tokens: list[Token]) -> Statement:
         args.append(parse_group(group))
     elif rest:
         raise malformed(rest[-1])
+    return args
+
+
+def parse(line_no: int, tokens: list[Token]) -> Statement:
+    labels: list[str] = []
+    pos: int = 0
+    while pos + 1 < len(tokens) and tokens[pos].kind == "IDENT" and tokens[pos + 1].kind == "COLON":
+        labels.append(tokens[pos].text)
+        pos += 2
+    if pos == len(tokens):
+        return Statement(line_no, tuple(labels), None, ())
+    if tokens[pos].kind != "IDENT":
+        raise malformed(tokens[pos])
+    mnem: str = tokens[pos].text.lower()
+    args: list[Operand] = split_operands(tokens[pos + 1 :])
     return Statement(line_no, tuple(labels), mnem, tuple(args))
