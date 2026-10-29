@@ -148,7 +148,7 @@ RANGES: Final[dict[str, tuple[int, int]]] = {
     "li": (-2147483648, 4294967295),
 }
 
-FIXED_IMM: Final[dict[str, int]] = {"ecall": 0, "ebreak": 1}
+FIXED_IMM: Final[dict[str, int]] = {"ebreak": 1}
 
 
 class Pseudo(NamedTuple):

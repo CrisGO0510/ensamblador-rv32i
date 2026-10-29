@@ -1,7 +1,18 @@
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Literal, NamedTuple, TypeAlias
 
-TokenKind: TypeAlias = Literal["IDENT", "NUM", "STRING", "COMMA", "COLON", "LPAREN", "RPAREN"]
+
+class TokenKind(StrEnum):
+    IDENT = "IDENT"
+    NUM = "NUM"
+    STRING = "STRING"
+    COMMA = "COMMA"
+    COLON = "COLON"
+    LPAREN = "LPAREN"
+    RPAREN = "RPAREN"
+
+
 OperandKind: TypeAlias = Literal["reg", "num", "sym", "mem", "str"]
 RelocKind: TypeAlias = Literal["pcrel", "hi", "lo"]
 
@@ -9,7 +20,6 @@ RelocKind: TypeAlias = Literal["pcrel", "hi", "lo"]
 class Token(NamedTuple):
     kind: TokenKind
     text: str
-    col: int
 
 
 class Operand(NamedTuple):
@@ -65,7 +75,6 @@ class Instr:
     imm: int = 0
     reloc: Reloc | None = None
     addr: int = 0
-    size: int = 4
 
 
 @dataclass(slots=True)

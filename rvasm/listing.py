@@ -1,3 +1,4 @@
+import re
 from typing import Final
 
 from rvasm.isa import SPEC, Spec
@@ -76,8 +77,9 @@ def listing(lines: list[str], instrs: list[Instr], text: bytes) -> str:
         word: int = int.from_bytes(text[4 * index:4 * index + 4], "little")
         shown: dict[str, str] = fields(spec, word)
         source: str = lines[ins.line - 1].strip().replace("|", "\\|")
+        fence: str = "`" * max(2, 1 + max((len(run) for run in re.findall("`+", source)), default=0))
         cells: list[str] = [
-            str(ins.line), f"0x{ins.addr:08x}", f"`` {source} ``", ins.mnem, f"{word:08x}", spec.fmt,
+            str(ins.line), f"0x{ins.addr:08x}", f"{fence} {source} {fence}", ins.mnem, f"{word:08x}", spec.fmt,
         ]
         cells += [shown.get(name, "") for name in COLUMNS[6:]]
         out.append("| " + " | ".join(cells) + " |")
